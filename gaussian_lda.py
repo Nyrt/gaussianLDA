@@ -24,13 +24,13 @@ corpus = "gutenberg"
 
 
 
-
+word2vec_model = None
 
 #Convert to word vectors
 try:
 	if "-recompute_vectors" in sys.argv:
 		assert False
-	model = word2vec.Word2Vec.load("%s.word2vec"%corpus)
+	word2vec_model = word2vec.Word2Vec.load("%s.word2vec"%corpus)
 	print("Model loaded successfully")
 except:
 	print("Could not load word vectors. Recomputing")
@@ -49,6 +49,7 @@ except:
 	word2vec_model.save("%s.word2vec"%corpus)
 	print("training complete")
 
+assert(word2vec_model != None)
 
 print("loading and preprocessing documents")
 
@@ -60,27 +61,46 @@ for document in documents:
 
 print max_wc
 
-doc_vecs = np.zeros(N,max_wc,D)
-for doc in len(documents):
-	for w in len(documents[i]):
-		doc_vecs[doc, w, :] = word2vec_model.wc[documents[doc][w]]
+doc_vecs = np.zeros((N,max_wc,D))
+for doc in range(len(documents)):
+	for w in range(len(documents[doc])):
+		doc_vecs[doc, w, :] = word2vec_model.wv[documents[doc][w]]
 
 print np.average(doc_vecs)
 
 print doc_vecs.shape
 
+
+# Initialize parameter values
+
 num_documents = len(documents)
 
- # number of words in each topic
+# number of words in each topic
 topic_counts = np.zeros(num_topics)
 # topic_doc_counts[i, j] represents how many words of document j are present in topic i.
 topic_doc_counts = np.zeros((num_documents, num_topics)) 
 #topic_assignment[i][j] gives the table assignment of word j of the ith document. 
 topic_assignment = [np.zeros(len(document)) for document in documents]
 topic_means = np.zeros(num_topics)
-cov_invs = np.eye(word_vector_dims)
+cov_invs = np.eye(D)
 dets = np.zeros(num_topics)
 
 iteration = 0
 
-nu_0 = 0
+# Prior parameters
+
+mu_0 = np.mean(doc_vecs, -1) # Mean word vector
+nu_0 = D
+k_0 = 0.1 # this is the value used in the paper
+sigma_0 = np.eye(D) * 3 * D # Check the paper about this
+
+
+
+
+
+
+
+
+# Run gibbs sampler
+
+# output 
