@@ -61,10 +61,17 @@ for document in documents:
 
 print max_wc
 
-doc_vecs = np.zeros((N,max_wc,D))
+mu_0 = np.zeros(D)
+vec_count = 0
+doc_vecs = np.array((N,max_wc,D))
 for doc in range(len(documents)):
 	for w in range(len(documents[doc])):
-		doc_vecs[doc, w, :] = word2vec_model.wv[documents[doc][w]]
+		vec = word2vec_model.wv[documents[doc][w]]
+		doc_vecs[doc, w, :] = vec
+		mu_0 += vec
+		vec_count += 1
+mu_0 /= vec_count
+
 
 print np.average(doc_vecs)
 
@@ -89,8 +96,12 @@ iteration = 0
 
 # Prior parameters
 
+mu_0 = np.zeros(D)
+
+
 mu_0 = np.mean(doc_vecs, -1) # Mean word vector
-nu_0 = D
+print mu_0.shape
+nu_0 = D # Degrees of Freedom
 k_0 = 0.1 # this is the value used in the paper
 sigma_0 = np.eye(D) * 3 * D # Check the paper about this
 
