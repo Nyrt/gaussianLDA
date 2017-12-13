@@ -215,16 +215,22 @@ for iteration in range(num_iterations):
 			for topic in range(num_topics):
 				count = topic_doc_counts[doc,topic]
 				logL = ln_t_density(wordvec, topic)
-				log_posterior = logL + np.log(count)
+				log_posterior = logL + np.log(count) # Add in the log prior
 				posterior[topic] = log_posterior
 				if log_posterior > max_prob:
 					max_prob = log_posterior
 			#Normalize
+			print max_prob
+			print posterior
 			posterior -= max_prob #this is the same as dividing the probabilities because of the log
+			print posterior
 			posterior = np.exp(posterior)
+			print np.sum(posterior)
+
+			print posterior
 
 			# Sample a new topic and update the parameters
-			new_topic = np.random.choice(np.arange(num_topics), posterior)
+			new_topic = np.random.choice(np.arange(num_topics), p=posterior)
 			topic_assignment[doc][w] = new_topic
 			topic_counts[new_topic] += 1
 			topic_doc_counts[doc, new_topic] += 1
