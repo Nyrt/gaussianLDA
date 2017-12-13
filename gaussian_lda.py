@@ -9,6 +9,8 @@ import sys
 from math import *
 
 
+
+
 import logging
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
@@ -116,7 +118,7 @@ mu_0 = np.zeros(D)
 print mu_0.shape
 nu_0 = D 
 k_0 = 0.1 # this is the value used in the paper
-sigma_0 = np.eye(D) * 3 * D # Check the paper about this
+sigma_0 = np.eye(D) * 3. * D # Check the paper about this
 
 deg_freedom = nu_0 - D + 1
 
@@ -127,13 +129,13 @@ sigma_T_inv = np.linalg.inv(sigma_T)
 sigma_T_det = np.linalg.det(sigma_T)
 
 # Used in computing sigma_n
-k_0mu_0mu_0_T = k_0 *  mu_0[:,None].dot(mu_0[None,:])
+k_0mu_0mu_0_T = k_0 * mu_0[:,None].dot(mu_0[None,:])
 
 # Assign initial topics randomly
 for doc in range(len(documents)):
 	for w in range(len(documents[doc])):
 		wordvec = doc_vecs[doc,w,:]
-		topic = np.random.choice(np.arange(num_topics))
+		topic = int(np.random.choice(np.arange(num_topics)))
 		topic_assignment[doc][w] = topic
 		topic_counts[topic] += 1
 		topic_doc_counts[doc, topic] += 1
@@ -161,25 +163,40 @@ for topic in range(num_topics):
 	#make sure topic isn't emtpy?
 	update_topic_params(topic)
 
-print "Initialization complete"
+print "Initialization complete. Beginning sampler:"
+
+# Working in log space to prevent overflows
+def ln_gamma(x):
+	return np.sum(np.log(np.arange(1,x)))
 
 # Calculate the log multivariate student-T density for a given word vector and topic
 def ln_t_density(word, topic):
 	mu = topic_means[topic,:]
 	sigmaInv = cov_invs[topic,:,:]
-	det = determinants[topic]
+	det = dets[topic]
 	count = topic_counts[topic]
 	nu = nu_0 + count - D + 1
-	print (word-mu)[None,:].dot(sigmaInv).dot(word-mu)
-	return np.log(gamma((nu + D)/2)) - (np.log(gamma(nu/2)) + D/2 * (np.log(nu)+np.log(pi)) + 0.5 * np.log(det) + (nu + D)/2* np.log(1+(word-mu)[None,:].dot(sigmaInv).dot(word-mu)/nu));	
+
+	print det, count, nu
+
+	a = ln_gamma((nu + D)/2.)
+
+	b = (ln_gamma(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * np.log(det) + (nu + D)/2.* np.log(1.+(word-mu)[None,:].dot(sigmaInv).dot(word-mu)/nu))
+
+	print a
+	print b
+
+	return a - b;	
 
 # Run gibbs sampler
 
 for iteration in range(num_iterations):
+	print "%i out of %i"%(iteration, num_iterations)
 	for doc in range(len(documents)):
 		for w in range(len(documents[doc])):
 			wordvec = doc_vecs[doc,w,:]
-			prev_topic = topic_assignment[doc][w]
+			prev_topic = int(topic_assignment[doc][w])
+			print prev_topic
 
 			#remove the word from its topic
 			#topic_assignment[doc][w] = -1 # So it's clear what's been removed
@@ -192,6 +209,7 @@ for iteration in range(num_iterations):
 			update_topic_params(prev_topic)
 
 			# Find posterior over topics given this word
+			# Working in log space to prevent overflows
 			posterior = np.zeros(num_topics)
 			max_prob = float("-inf")
 			for topic in range(num_topics):
@@ -202,6 +220,18 @@ for iteration in range(num_iterations):
 				if log_posterior > max_prob:
 					max_prob = log_posterior
 			#Normalize
-			#618
+			posterior -= max_prob #this is the same as dividing the probabilities because of the log
+			posterior = np.exp(posterior)
+
+			# Sample a new topic and update the parameters
+			new_topic = np.random.choice(np.arange(num_topics), posterior)
+			topic_assignment[doc][w] = new_topic
+			topic_counts[new_topic] += 1
+			topic_doc_counts[doc, new_topic] += 1
+			topic_sums[new_topic,:] += wordvec
+			topic_sums_squared[new_topic,:,:] += wordvec[:,None].dot(wordvec[None,:])
+			update_topic_params(new_topic)
+
+print "Done!"
 
 # output 
