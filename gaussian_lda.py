@@ -7,6 +7,7 @@ from nltk.corpus import brown as corpus
 from gensim.models import word2vec
 import sys
 from math import *
+from scipy.stats import multivariate_normal
 
 
 # use "--recumpute_vectors" flag to regenerate word vectors
@@ -17,7 +18,7 @@ import logging
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 num_iterations = 20
-num_topics = 10
+num_topics = 50
 D = 100
 N = len(corpus.fileids())
 
@@ -283,10 +284,22 @@ except:
 										topic_assignment=topic_assignment)
 
 
+print "Computing top 10 words for each topic"
+top_words = [{}]*num_topics
+
+for doc in range(len(documents)):
+	for w in range(len(documents[doc])):
+		word = documents[doc][w]
+		topic = int(topic_assignment[doc][w])
+		wordvec = doc_vecs[doc,w]
+		prob = multivariate_normal.pdf(wordvec, mean=topic_means[topic], cov=covs[topic,:,:])
+		top_words[topic][word] = prob
 
 for i in range(num_topics):
-	for doc in range(len(documents)):
-		for w in range(len(documents[doc])):
-			pass
+	print "Topic %i"%i
+	words = sorted(top_words[i].iteritems(), key=lambda(k,v): (v,k), reverse = True)
+	for w in range(10):
+		print words[w]
+
 
 # output 
