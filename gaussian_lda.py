@@ -17,7 +17,7 @@ import logging
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 num_iterations = 20
-num_topics = 50
+num_topics = 10
 D = 100
 N = len(corpus.fileids())
 
@@ -253,6 +253,18 @@ except:
 				topic_sums[new_topic,:] += wordvec
 				topic_sums_squared[new_topic,:,:] += wordvec[:,None].dot(wordvec[None,:])
 				update_topic_params(new_topic)
+		print "saving model"
+		if "--outfile" in sys.argv:
+			outfile = sys.argv[sys.argv.index("--outfile") +1]+"_checkpoint"
+		else:
+			outfile = "lda%s_checkpoint.npz"%corpus_name
+
+		np.savez(outfile,   topic_counts=topic_counts, 
+											topic_means=topic_means,
+											topic_sums=topic_sums, 
+											covs=covs, 
+											topic_doc_counts=topic_doc_counts,
+											topic_assignment=topic_assignment)
 
 	print "Done!"
 
@@ -275,6 +287,6 @@ num_words
 for i in range(num_topics):
 	for doc in range(len(documents)):
 		for w in range(len(documents[doc])):
-
+			pass
 
 # output 
