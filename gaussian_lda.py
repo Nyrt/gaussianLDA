@@ -38,7 +38,7 @@ try:
 except:
 	print("Could not load word vectors. Recomputing")
 
-	documents = [corpus.sents(file) for file in corpus.fileids()]
+	documents = [corpus.sents(file) for file in corpus.fileids(categories=['news', 'editorial', 'reviews'])]
 
 	# preprocess the documents (convert to lowercase, remove stop words and punctuation, and stem)
 	documents = [[[stemmer.stem(word.lower()) for word in sentence if not word.lower() in stop_words and word[0] not in string.punctuation] for sentence in doc] for doc in documents]
@@ -56,7 +56,7 @@ assert(word2vec_model != None)
 
 print("loading and preprocessing documents")
 
-documents = [[stemmer.stem(word.lower()) for word in corpus.words(file) if not word.lower() in stop_words and word[0] not in string.punctuation] for file in corpus.fileids()]
+documents = [[stemmer.stem(word.lower()) for word in corpus.words(file) if not word.lower() in stop_words and word[0] not in string.punctuation] for file in corpus.fileids(categories=['news', 'editorial', 'reviews'])]
 
 max_wc = 0
 for document in documents:
@@ -282,7 +282,7 @@ except:
 										topic_doc_counts=topic_doc_counts,
 										topic_assignment=topic_assignment)
 
-num_words
+
 
 for i in range(num_topics):
 	for doc in range(len(documents)):

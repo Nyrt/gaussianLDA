@@ -19,7 +19,7 @@ stemmer = PorterStemmer()
 
 print("loading and preprocessing documents")
 
-documents = [data.words(file) for file in data.fileids()]
+documents = [data.words(file) for file in data.fileids(categories=['news', 'editorial', 'reviews'])]
 
 print len(documents[0])
 
