@@ -6,7 +6,7 @@ import string
 from nltk.tokenize import RegexpTokenizer
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
-from nltk.corpus import gutenberg
+from nltk.corpus import brown as data
 
 
 from gensim import corpora, models
@@ -19,7 +19,7 @@ stemmer = PorterStemmer()
 
 print("loading and preprocessing documents")
 
-documents = [gutenberg.words(file) for file in gutenberg.fileids()]
+documents = [data.words(file) for file in data.fileids()]
 
 print len(documents[0])
 
@@ -34,6 +34,6 @@ dictionary = corpora.Dictionary(documents)
 corpus = [dictionary.doc2bow(text) for text in documents]
 
 # generate LDA model
-ldamodel = gensim.models.ldamodel.LdaModel(corpus, num_topics=10, id2word = dictionary, passes=20)
+ldamodel = gensim.models.ldamodel.LdaModel(corpus, num_topics=50, id2word = dictionary, passes=20)
 
 print(ldamodel.print_topics(num_topics = 10, num_words = 10))
