@@ -11,7 +11,7 @@ from scipy.stats import multivariate_normal
 from scipy.special import gammaln
 
 
-# use "--recumpute_vectors" flag to regenerate word vectors
+# use "--recompute_vectors" flag to regenerate word vectors
 # use "--recompute_lda" flag to regenerate LDA model
 # "--outfile [filename]" to name the LDA model file
 
@@ -19,15 +19,15 @@ import logging
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 num_iterations = 20
-num_topics = 5
-D = 100
+num_topics = 50
+D = 200
 N = len(corpus.fileids())
 
 
 tokenizer = RegexpTokenizer(r'\w+')
 stop_words = set(stopwords.words('english'))
 stemmer = PorterStemmer()
-corpus_name = "brown_tiny"
+corpus_name = "brown"
 
 
 word2vec_model = None
@@ -40,7 +40,7 @@ try:
 except:
 	print("Could not load word vectors. Recomputing")
 
-	documents = [corpus.sents(file) for file in corpus.fileids(categories=['news'])]
+	documents = [corpus.sents(file) for file in corpus.fileids()]
 
 	# preprocess the documents (convert to lowercase, remove stop words and punctuation, and stem)
 	documents = [[[stemmer.stem(word.lower()) for word in sentence if not word.lower() in stop_words and word[0] not in string.punctuation] for sentence in doc] for doc in documents]
@@ -58,7 +58,7 @@ assert(word2vec_model != None)
 
 print("loading and preprocessing documents")
 
-documents = [[stemmer.stem(word.lower()) for word in corpus.words(file) if not word.lower() in stop_words and word[0] not in string.punctuation] for file in corpus.fileids(categories=['news'])]
+documents = [[stemmer.stem(word.lower()) for word in corpus.words(file) if not word.lower() in stop_words and word[0] not in string.punctuation] for file in corpus.fileids(categories=['news', 'editorial', 'reviews'])]
 
 max_wc = 0
 for document in documents:
@@ -67,13 +67,13 @@ for document in documents:
 doc_vecs = np.zeros((N,max_wc,D))
 #print doc_vecs.shape
 for doc in range(len(documents)):
-	for w in range(len(documents[doc])):
+	for w in range(len(documents[doc])):  
 		vec = word2vec_model.wv[documents[doc][w]]
 		#print vec.shape
 		#print doc_vecs[doc, w, :].shape
 		doc_vecs[doc, w, :] = vec
 
-vocab = set(stemmer.stem(word.lower()) for word in corpus.words(categories=['news']) if not word.lower() in stop_words and word[0] not in string.punctuation)
+vocab = set(stemmer.stem(word.lower()) for word in corpus.words(categories=['news', 'editorial', 'reviews']) if not word.lower() in stop_words and word[0] not in string.punctuation)
 mu_0 = np.zeros(D)
 for word in vocab:
 	mu_0 += word2vec_model.wv[word]
@@ -91,10 +91,10 @@ print "Initializing topics & params"
 #mu_0 = np.mean(doc_vecs, -1) # This doesn't work because of the empty word vectors that pad documents
 #print mu_0.shape
 nu_0 = D 
-k_0 = 0.01 # this is the value used in the paper
-sigma_0 = np.eye(D) * 3. * D # Check the paper about this
+k_0 = 0.1 # this is the value used in the paper
+sigma_0 = np.eye(D) * 3. * D# Check the paper about this
 num_documents = len(documents)
-alpha = 50./num_topics
+alpha = 1./num_topics
 k_0mu_0mu_0_T = k_0 * mu_0[:,None].dot(mu_0[None,:])
 
 
@@ -116,6 +116,11 @@ def update_topic_params(topic):
 	covs[topic] = sigma_n
 	cov_invs[topic] = np.linalg.inv(sigma_n)
 
+
+
+
+
+
 # # Working in log space to prevent overflows
 # def ln_gamma(x):
 # 	return np.sum(np.log(np.arange(1,x)))
@@ -131,10 +136,18 @@ def ln_t_density(word, topic):
 	# print det, count, nu
 
 	a = gammaln((nu + D)/2.)
+	LLcomp = ((word-mu)[None,:].dot(sigmaInv).dot(word-mu))
+	b = (gammaln(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * logdet + (nu + D)/2.* np.log(1.+LLcomp/nu))
 
-	b = (gammaln(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * logdet + (nu + D)/2.* np.log(1.+((word-mu)[None,:].dot(sigmaInv).dot(word-mu))/nu))
-
-	return a - b;	
+	# print topic
+	# print a
+	# print b
+	# print ((word-mu)[None,:].dot(sigmaInv).dot(word-mu))
+	# print gammaln(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * logdet
+	# print a-b
+	# print topic
+	# print a-b
+	return a - b;
 
 
 try:
@@ -214,6 +227,7 @@ except:
 		for doc in range(len(documents)):
 			print topic_counts
 			print topic_doc_counts
+			# raw_input()
 			# for topic in range(num_topics):
 			# 	print topic_sums_squared[topic,:,:]
 
