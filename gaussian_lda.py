@@ -8,6 +8,7 @@ from gensim.models import word2vec
 import sys
 from math import *
 from scipy.stats import multivariate_normal
+from scipy.special import gammaln
 
 
 # use "--recumpute_vectors" flag to regenerate word vectors
@@ -18,7 +19,7 @@ import logging
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
 num_iterations = 20
-num_topics = 50
+num_topics = 5
 D = 100
 N = len(corpus.fileids())
 
@@ -26,7 +27,7 @@ N = len(corpus.fileids())
 tokenizer = RegexpTokenizer(r'\w+')
 stop_words = set(stopwords.words('english'))
 stemmer = PorterStemmer()
-corpus_name = "brown"
+corpus_name = "brown_tiny"
 
 
 word2vec_model = None
@@ -39,7 +40,7 @@ try:
 except:
 	print("Could not load word vectors. Recomputing")
 
-	documents = [corpus.sents(file) for file in corpus.fileids(categories=['news', 'editorial', 'reviews'])]
+	documents = [corpus.sents(file) for file in corpus.fileids(categories=['editorial'])]
 
 	# preprocess the documents (convert to lowercase, remove stop words and punctuation, and stem)
 	documents = [[[stemmer.stem(word.lower()) for word in sentence if not word.lower() in stop_words and word[0] not in string.punctuation] for sentence in doc] for doc in documents]
@@ -57,13 +58,14 @@ assert(word2vec_model != None)
 
 print("loading and preprocessing documents")
 
-documents = [[stemmer.stem(word.lower()) for word in corpus.words(file) if not word.lower() in stop_words and word[0] not in string.punctuation] for file in corpus.fileids(categories=['news', 'editorial', 'reviews'])]
+documents = [[stemmer.stem(word.lower()) for word in corpus.words(file) if not word.lower() in stop_words and word[0] not in string.punctuation] for file in corpus.fileids(categories=['editorial'])]
+
 
 max_wc = 0
 for document in documents:
 	max_wc= max(max_wc, len(document))
 
-#print max_wc
+
 
 mu_0 = np.zeros(D)
 vec_count = 0
@@ -77,8 +79,7 @@ for doc in range(len(documents)):
 		doc_vecs[doc, w, :] = vec
 		mu_0 += vec
 		vec_count += 1
-mu_0 /= vec_count
-
+mu_0 = mu_0/float(vec_count)
 
 #print np.average(doc_vecs)
 
@@ -88,35 +89,37 @@ print "Initializing topics & params"
 
 # Prior parameters
 
-mu_0 = np.zeros(D)
-
-
 #mu_0 = np.mean(doc_vecs, -1) # This doesn't work because of the empty word vectors that pad documents
 #print mu_0.shape
 nu_0 = D 
-k_0 = 0.1 # this is the value used in the paper
+k_0 = 0.01 # this is the value used in the paper
 sigma_0 = np.eye(D) * 3. * D # Check the paper about this
 num_documents = len(documents)
+alpha = 50./num_topics
+k_0mu_0mu_0_T = k_0 * mu_0[:,None].dot(mu_0[None,:])
+
 
 def update_topic_params(topic):
 		topic_count = topic_counts[topic]
 		nu_n = nu_0 + topic_count
 		k_n = k_0 + topic_count
 		mu_n = (k_0 * mu_0 + topic_sums[topic,:])/k_n
+		#mu_n = topic_sums[topic,:]/topic_count
 		topic_means[topic,:] = mu_n
 
 		#Calculate topic covariance
 		sigma_n = sigma_0 + topic_sums_squared[topic,:,:] + k_0mu_0mu_0_T - k_n * mu_n[:,None].dot(mu_n[None,:])
 		#normalize
 		sigma_n *= (k_n+1)/(k_n * (nu_n - D + 1))
+
 		dets[topic] = np.linalg.det(sigma_n)
 
 		covs[topic] = sigma_n
 		cov_invs[topic] = np.linalg.inv(sigma_n)
 
-# Working in log space to prevent overflows
-def ln_gamma(x):
-	return np.sum(np.log(np.arange(1,x)))
+# # Working in log space to prevent overflows
+# def ln_gamma(x):
+# 	return np.sum(np.log(np.arange(1,x)))
 
 # Calculate the log multivariate student-T density for a given word vector and topic
 def ln_t_density(word, topic):
@@ -128,14 +131,12 @@ def ln_t_density(word, topic):
 
 	# print det, count, nu
 
-	a = ln_gamma((nu + D)/2.)
+	a = gammaln((nu + D)/2.)
 
-	b = (ln_gamma(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * np.log(det) + (nu + D)/2.* np.log(1.+((word-mu)[None,:].dot(sigmaInv).dot(word-mu))/nu))
-
-	# print a
-	# print b
+	b = (gammaln(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * np.log(det) + (nu + D)/2.* np.log(1.+((word-mu)[None,:].dot(sigmaInv).dot(word-mu))/nu))
 
 	return a - b;	
+
 
 
 try:
@@ -177,16 +178,15 @@ except:
 	topic_sums_squared = np.zeros((num_topics,D, D))
 
 
-	deg_freedom = nu_0 - D + 1
+	# deg_freedom = nu_0 - D + 1
 
-	sigma_T = sigma_0 * (k_0 + 1.0)/(k_0 * deg_freedom)
+	# sigma_T = sigma_0 * (k_0 + 1.0)/(k_0 * deg_freedom)
 
-	sigma_T_inv = np.linalg.inv(sigma_T)
+	# sigma_T_inv = np.linalg.inv(sigma_T)
 
-	sigma_T_det = np.linalg.det(sigma_T)
+	# sigma_T_det = np.linalg.det(sigma_T)
 
 	# Used in computing sigma_n
-	k_0mu_0mu_0_T = k_0 * mu_0[:,None].dot(mu_0[None,:])
 
 	# Assign initial topics randomly
 	for doc in range(len(documents)):
@@ -214,6 +214,10 @@ except:
 	for iteration in range(num_iterations):
 		print "iteration %i out of %i"%(iteration, num_iterations)
 		for doc in range(len(documents)):
+			print topic_counts
+			# for topic in range(num_topics):
+			# 	print topic_sums_squared[topic,:,:]
+
 			print "doc %i out of %i"%(doc, len(documents))
 			for w in range(len(documents[doc])):
 				# if w %1000 == 0:
@@ -235,19 +239,30 @@ except:
 				# Find posterior over topics given this word
 				# Working in log space to prevent overflows
 				posterior = np.zeros(num_topics)
+				counts = topic_doc_counts[doc,:] + alpha
+
+				# Find log likelihood
 				for topic in range(num_topics):
-					count = topic_doc_counts[doc,topic]
-					logL = ln_t_density(wordvec, topic)
-					log_posterior = logL + np.log(count + 1e-19) # Add in the log prior
-					posterior[topic] = log_posterior
+					posterior[topic]  = ln_t_density(wordvec, topic)
+
+
+				posterior += np.log(counts) # Add in the log prior
 				#Normalize
+				posterior -= np.max(posterior)
 				posterior = np.exp(posterior)
 				posterior /= np.sum(posterior)
 
-				# print posterior
+				#print posterior
+				#print topic_counts
+				#raw_input()
 
 				# Sample a new topic and update the parameters
 				new_topic = np.random.choice(np.arange(num_topics), p=posterior)
+
+				# print new_topic
+				# print topic_means[new_topic]
+
+
 				topic_assignment[doc][w] = new_topic
 				topic_counts[new_topic] += 1
 				topic_doc_counts[doc, new_topic] += 1
@@ -284,22 +299,24 @@ except:
 										topic_assignment=topic_assignment)
 
 
-print "Computing top 10 words for each topic"
-top_words = [{}]*num_topics
+def print_top_words(n=10):
+	print "Finding top 10 words for each topic"
+	top_words = [{}]*num_topics
 
-for doc in range(len(documents)):
-	for w in range(len(documents[doc])):
-		word = documents[doc][w]
-		topic = int(topic_assignment[doc][w])
-		wordvec = doc_vecs[doc,w]
-		prob = multivariate_normal.pdf(wordvec, mean=topic_means[topic], cov=covs[topic,:,:])
-		top_words[topic][word] = prob
+	for doc in range(len(documents)):
+		for w in range(len(documents[doc])):
+			word = documents[doc][w]
+			topic = int(topic_assignment[doc][w])
+			wordvec = doc_vecs[doc,w]
+			prob = multivariate_normal.pdf(wordvec, mean=topic_means[topic], cov=covs[topic,:,:])
+			top_words[topic][word] = prob
 
-for i in range(num_topics):
-	print "Topic %i"%i
-	words = sorted(top_words[i].iteritems(), key=lambda(k,v): (v,k), reverse = True)
-	for w in range(10):
-		print words[w]
+	for i in range(num_topics):
+		print "Topic %i"%i
+		words = sorted(top_words[i].iteritems(), key=lambda(k,v): (v,k), reverse = True)
+		for w in range(10):
+			print words[w]
 
+print_top_words(10)
 
 # output 
