@@ -95,30 +95,25 @@ k_0 = 0.1 # this is the value used in the paper
 sigma_0 = np.eye(D) * 3. * D# Check the paper about this
 num_documents = len(documents)
 alpha = 1./num_topics
-k_0mu_0mu_0_T = k_0 * mu_0[:,None].dot(mu_0[None,:])
+m_0_squared = k_0 * mu_0[:,None].dot(mu_0[None,:])
 
 
 def update_topic_params(topic):
 	topic_count = topic_counts[topic]
-	nu_n = nu_0 + topic_count
-	k_n = k_0 + topic_count
-	mu_n = (k_0 * mu_0 + topic_sums[topic,:])/k_n
-	#mu_n = topic_sums[topic,:]/topic_count
-	topic_means[topic,:] = mu_n
+	nu_k = nu_0 + topic_count
+	k_k = k_0 + topic_count
+	mu_k = (k_0 * mu_0 + topic_sums[topic,:])/k_k
+	topic_means[topic,:] = mu_k
 
 	#Calculate topic covariance
-	sigma_n = sigma_0 + topic_sums_squared[topic,:,:] + k_0mu_0mu_0_T - k_n * mu_n[:,None].dot(mu_n[None,:])
+	sigma_n = sigma_0 + topic_sums_squared[topic,:,:] + m_0_squared - k_k * mu_k[:,None].dot(mu_k[None,:])
 	#normalize
-	sigma_n *= (k_n+1)/(k_n * (nu_n - D + 1))
+	sigma_n *= (k_k+1)/(k_k * (nu_k - D + 1))
 
 	_, dets[topic] = np.linalg.slogdet(sigma_n)
 
 	covs[topic] = sigma_n
 	cov_invs[topic] = np.linalg.inv(sigma_n)
-
-
-
-
 
 
 # # Working in log space to prevent overflows
@@ -132,21 +127,10 @@ def ln_t_density(word, topic):
 	logdet = dets[topic]
 	count = topic_counts[topic]
 	nu = nu_0 + count - D + 1
-
-	# print det, count, nu
-
+	# I separated some parts of the formula for readability
 	a = gammaln((nu + D)/2.)
 	LLcomp = ((word-mu)[None,:].dot(sigmaInv).dot(word-mu))
 	b = (gammaln(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * logdet + (nu + D)/2.* np.log(1.+LLcomp/nu))
-
-	# print topic
-	# print a
-	# print b
-	# print ((word-mu)[None,:].dot(sigmaInv).dot(word-mu))
-	# print gammaln(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * logdet
-	# print a-b
-	# print topic
-	# print a-b
 	return a - b;
 
 
@@ -179,23 +163,14 @@ except:
 	topic_assignment = [np.zeros(len(document)) for document in documents]
 	topic_means = np.zeros((num_topics,D))
 
-	# Covariance matrices, their inverses, and their log determinants
+	# Covariance matrices
 	covs = np.zeros((num_topics,D,D))
+	
+	# Storing these for efficiency
 	cov_invs = np.zeros((num_topics,D,D))
 	dets = np.zeros(num_topics)
-
-	# Storing these for efficiency
 	topic_sums = np.zeros((num_topics,D))
 	topic_sums_squared = np.zeros((num_topics,D, D))
-
-
-	# deg_freedom = nu_0 - D + 1
-
-	# sigma_T = sigma_0 * (k_0 + 1.0)/(k_0 * deg_freedom)
-
-	# sigma_T_inv = np.linalg.inv(sigma_T)
-
-	# sigma_T_det = np.linalg.det(sigma_T)
 
 	# Used in computing sigma_n
 
@@ -210,8 +185,6 @@ except:
 			topic_sums[topic,:] += wordvec
 			topic_sums_squared[topic,:,:] += wordvec[:,None].dot(wordvec[None,:])
 
-	
-
 	# Find parameters of each topic
 	for topic in range(num_topics):
 		#make sure topic isn't emtpy?
@@ -221,21 +194,16 @@ except:
 
 	# Run gibbs sampler
 
-
 	for iteration in range(num_iterations):
 		print "iteration %i out of %i"%(iteration, num_iterations)
 		for doc in range(len(documents)):
+			print "topic counts:"
 			print topic_counts
-			print topic_doc_counts
-			# raw_input()
-			# for topic in range(num_topics):
-			# 	print topic_sums_squared[topic,:,:]
 
 			print "doc %i out of %i"%(doc, len(documents))
 			for w in range(len(documents[doc])):
 				wordvec = doc_vecs[doc,w,:]
 				prev_topic = int(topic_assignment[doc][w])
-				# print prev_topic
 
 				#remove the word from its topic
 				topic_assignment[doc][w] = -1 # So it's clear what's been removed
@@ -250,37 +218,20 @@ except:
 				# Find posterior over topics given this word
 				# Working in log space to prevent overflows
 				posterior = np.zeros(num_topics)
-				counts = topic_doc_counts[doc,:] + alpha
+				counts = topic_doc_counts[doc,:] + alpha #prior
 
 				# Find log likelihood
 				for topic in range(num_topics):
 					posterior[topic]  = ln_t_density(wordvec, topic)
 
 				posterior -= np.max(posterior) #Again, to prevent overflows
-
 				posterior += np.log(counts) # Add in the log prior
 				#Normalize
 				posterior = np.exp(posterior)
 				posterior /= np.sum(posterior)
 
-
-
-				#print posterior
-				#print topic_counts
-				#raw_input()
-
 				# Sample a new topic and update the parameters
 				new_topic = np.random.choice(np.arange(num_topics), p=posterior)
-
-				# print new_topic
-				# print topic_means[new_topic]
-
-				# print posterior, new_topic
-
-				# if w %100 == 0:
-				#  	print "word %i out of %i"%(w, len(documents[doc]))
-				#  	raw_input()
-
 
 				topic_assignment[doc][w] = new_topic
 				topic_counts[new_topic] += 1
