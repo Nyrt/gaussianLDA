@@ -40,7 +40,7 @@ try:
 except:
 	print("Could not load word vectors. Recomputing")
 
-	documents = [corpus.sents(file) for file in corpus.fileids(categories=['editorial'])]
+	documents = [corpus.sents(file) for file in corpus.fileids(categories=['news'])]
 
 	# preprocess the documents (convert to lowercase, remove stop words and punctuation, and stem)
 	documents = [[[stemmer.stem(word.lower()) for word in sentence if not word.lower() in stop_words and word[0] not in string.punctuation] for sentence in doc] for doc in documents]
@@ -58,17 +58,12 @@ assert(word2vec_model != None)
 
 print("loading and preprocessing documents")
 
-documents = [[stemmer.stem(word.lower()) for word in corpus.words(file) if not word.lower() in stop_words and word[0] not in string.punctuation] for file in corpus.fileids(categories=['editorial'])]
-
+documents = [[stemmer.stem(word.lower()) for word in corpus.words(file) if not word.lower() in stop_words and word[0] not in string.punctuation] for file in corpus.fileids(categories=['news'])]
 
 max_wc = 0
 for document in documents:
 	max_wc= max(max_wc, len(document))
 
-
-
-mu_0 = np.zeros(D)
-vec_count = 0
 doc_vecs = np.zeros((N,max_wc,D))
 #print doc_vecs.shape
 for doc in range(len(documents)):
@@ -77,9 +72,13 @@ for doc in range(len(documents)):
 		#print vec.shape
 		#print doc_vecs[doc, w, :].shape
 		doc_vecs[doc, w, :] = vec
-		mu_0 += vec
-		vec_count += 1
-mu_0 = mu_0/float(vec_count)
+
+vocab = set(stemmer.stem(word.lower()) for word in corpus.words(categories=['news']) if not word.lower() in stop_words and word[0] not in string.punctuation)
+mu_0 = np.zeros(D)
+for word in vocab:
+	mu_0 += word2vec_model.wv[word]
+
+mu_0 /= len(vocab)
 
 #print np.average(doc_vecs)
 
@@ -100,22 +99,22 @@ k_0mu_0mu_0_T = k_0 * mu_0[:,None].dot(mu_0[None,:])
 
 
 def update_topic_params(topic):
-		topic_count = topic_counts[topic]
-		nu_n = nu_0 + topic_count
-		k_n = k_0 + topic_count
-		mu_n = (k_0 * mu_0 + topic_sums[topic,:])/k_n
-		#mu_n = topic_sums[topic,:]/topic_count
-		topic_means[topic,:] = mu_n
+	topic_count = topic_counts[topic]
+	nu_n = nu_0 + topic_count
+	k_n = k_0 + topic_count
+	mu_n = (k_0 * mu_0 + topic_sums[topic,:])/k_n
+	#mu_n = topic_sums[topic,:]/topic_count
+	topic_means[topic,:] = mu_n
 
-		#Calculate topic covariance
-		sigma_n = sigma_0 + topic_sums_squared[topic,:,:] + k_0mu_0mu_0_T - k_n * mu_n[:,None].dot(mu_n[None,:])
-		#normalize
-		sigma_n *= (k_n+1)/(k_n * (nu_n - D + 1))
+	#Calculate topic covariance
+	sigma_n = sigma_0 + topic_sums_squared[topic,:,:] + k_0mu_0mu_0_T - k_n * mu_n[:,None].dot(mu_n[None,:])
+	#normalize
+	sigma_n *= (k_n+1)/(k_n * (nu_n - D + 1))
 
-		dets[topic] = np.linalg.det(sigma_n)
+	_, dets[topic] = np.linalg.slogdet(sigma_n)
 
-		covs[topic] = sigma_n
-		cov_invs[topic] = np.linalg.inv(sigma_n)
+	covs[topic] = sigma_n
+	cov_invs[topic] = np.linalg.inv(sigma_n)
 
 # # Working in log space to prevent overflows
 # def ln_gamma(x):
@@ -125,7 +124,7 @@ def update_topic_params(topic):
 def ln_t_density(word, topic):
 	mu = topic_means[topic,:]
 	sigmaInv = cov_invs[topic,:,:]
-	det = dets[topic]
+	logdet = dets[topic]
 	count = topic_counts[topic]
 	nu = nu_0 + count - D + 1
 
@@ -133,10 +132,9 @@ def ln_t_density(word, topic):
 
 	a = gammaln((nu + D)/2.)
 
-	b = (gammaln(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * np.log(det) + (nu + D)/2.* np.log(1.+((word-mu)[None,:].dot(sigmaInv).dot(word-mu))/nu))
+	b = (gammaln(nu/2.) + D/2. * (np.log(nu)+np.log(pi)) + 0.5 * logdet + (nu + D)/2.* np.log(1.+((word-mu)[None,:].dot(sigmaInv).dot(word-mu))/nu))
 
 	return a - b;	
-
 
 
 try:
@@ -168,7 +166,7 @@ except:
 	topic_assignment = [np.zeros(len(document)) for document in documents]
 	topic_means = np.zeros((num_topics,D))
 
-	# Covariance matrices, their inverses, and their determinants
+	# Covariance matrices, their inverses, and their log determinants
 	covs = np.zeros((num_topics,D,D))
 	cov_invs = np.zeros((num_topics,D,D))
 	dets = np.zeros(num_topics)
@@ -215,19 +213,18 @@ except:
 		print "iteration %i out of %i"%(iteration, num_iterations)
 		for doc in range(len(documents)):
 			print topic_counts
+			print topic_doc_counts
 			# for topic in range(num_topics):
 			# 	print topic_sums_squared[topic,:,:]
 
 			print "doc %i out of %i"%(doc, len(documents))
 			for w in range(len(documents[doc])):
-				# if w %1000 == 0:
-				# 	print "word %i out of %i"%(w, len(documents[doc]))
 				wordvec = doc_vecs[doc,w,:]
 				prev_topic = int(topic_assignment[doc][w])
 				# print prev_topic
 
 				#remove the word from its topic
-				#topic_assignment[doc][w] = -1 # So it's clear what's been removed
+				topic_assignment[doc][w] = -1 # So it's clear what's been removed
 				topic_counts[prev_topic] -= 1
 				topic_doc_counts[doc, prev_topic] -= 1
 				topic_sums[prev_topic,:] -= wordvec
@@ -245,12 +242,14 @@ except:
 				for topic in range(num_topics):
 					posterior[topic]  = ln_t_density(wordvec, topic)
 
+				posterior -= np.max(posterior) #Again, to prevent overflows
 
 				posterior += np.log(counts) # Add in the log prior
 				#Normalize
-				posterior -= np.max(posterior)
 				posterior = np.exp(posterior)
 				posterior /= np.sum(posterior)
+
+
 
 				#print posterior
 				#print topic_counts
@@ -261,6 +260,12 @@ except:
 
 				# print new_topic
 				# print topic_means[new_topic]
+
+				# print posterior, new_topic
+
+				# if w %100 == 0:
+				#  	print "word %i out of %i"%(w, len(documents[doc]))
+				#  	raw_input()
 
 
 				topic_assignment[doc][w] = new_topic
